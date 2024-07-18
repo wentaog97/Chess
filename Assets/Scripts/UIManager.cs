@@ -11,6 +11,11 @@ public class UIManager : MonoBehaviour
     public Button reset;
     public Button undo;
     public DisplayManager displayManager;
+    public GameManager gameManager;
+    public MovesManager movesManager;
+
+    public Toggle isBot1, isBot2;
+
     /*
     public Text blackCaptured;
     public Text WhiteCaptured;
@@ -25,9 +30,14 @@ public class UIManager : MonoBehaviour
     void Start()
     {
         displayGameInfo();
+        movesManager.isBot1 = isBot1.isOn;
+        movesManager.isBot2 = isBot2.isOn;
+
+        isBot1.onValueChanged.AddListener(OnToggle1ValueChanged);
+        isBot2.onValueChanged.AddListener(OnToggle2ValueChanged);
 
         reset.onClick.AddListener(OnResetButtonPress);
-        //undo.onClick.AddListener(OnUndoButtonPress);
+        undo.onClick.AddListener(OnUndoButtonPress);
     }
 
     // Update is called once per frame
@@ -35,22 +45,37 @@ public class UIManager : MonoBehaviour
     {
         
     }
+    void OnToggle1ValueChanged(bool isOn)
+    {
+        movesManager.isBot1 = isOn;
+    }
+
+    void OnToggle2ValueChanged(bool isOn)
+    {
+        movesManager.isBot2 = isOn;
+    }
 
     void OnResetButtonPress(){
-        GameManager.instance.ResetGame();
+        gameManager.ResetGame();
         displayManager.ResetGame();
+        win.text = "";
         displayGameInfo();
     }
 
-    // void OnUndoButtonPress()
-    // {
-    //     GameManager.instance.UndoMove();
-    //     displayManager.UndoMove();
-    //     displayGameInfo();
-    // }
+    void OnUndoButtonPress()
+    {
+        Debug.Log("Undo Clicked!");
+        // gameManager.UndoMove();
+        // displayManager.UndoMove();
+        // displayGameInfo();
+    }
 
     public void displayGameInfo(){
-        turn.text = "Turn: " + ((GameManager.instance.getTurn()==ChessPiece.WHITE) ? "WHITE" : "BLACK");
+        turn.text = 
+        "Turn: " + ((gameManager.getTurn()==ChessPiece.WHITE) ? "WHITE" : "BLACK")
+        + "\n" +
+        "Half move count = " + gameManager.getHalfMoveCount()
+        ;
     }
 
     public void displayResult(bool isInCheck, bool isWhiteWin){

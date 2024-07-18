@@ -3,70 +3,32 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-// Chess Piece Binary representation
-// Use board[0][0] = BLACK | ROOK; to set and piece = board[5][3] & PIECE; to get
-[Flags]
-public enum ChessPiece
-{   
-    // Pieces
-    EMPTY = 0,
-    PAWN = 1,
-    ROOK = 2,
-    KNIGHT = 3,
-    BISHOP = 4,
-    QUEEN = 5,
-    KING = 6,
-    // Colors
-    BLACK = 8,
-    WHITE = 0,
-    // Mask
-    PIECEMASK = 7,
-}
-
-public enum CastlingRights{
-    WHITE_KING_SIDE = 0,
-    WHITE_QUEEN_SIDE = 1,
-    BLACK_KING_SIDE = 2,
-    BLACK_QUEEN_SIDE = 3
-}
-
-public class MoveRecord{
-    int oriPos;
-    int newPos;
-    ChessPiece capturedPiece;
-}
-
 // This global class will save all of the game states, as well as commonly used methods
 // Serve as the model in MVC
-internal class GameManager : MonoBehaviour
-{
-    const string STARTING_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    const string POSITION2 = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0";
-    const string POSITION3 = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - 0 0";
-    const string POSITION4 = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
-
-    public static GameManager instance = null;
+public class GameManager : MonoBehaviour
+{   
+    // Example starting positions
+    const string 
+        STARTING_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 
+        POSITION2 = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0",
+        POSITION3 = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 0",
+        POSITION4 = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1"
+    ;
 
     // Game States
     ChessPiece[] board = new ChessPiece[64];
     List<ChessPiece> capturedPieces = new List<ChessPiece>();
     bool isWhiteTurn;
     bool[] canCastle = new bool[4];
-    int enPassantTile;
-    int enPassantPawnPosition;
-    int halfMoveCount;
-    int movesCounter;
-    string defaultFen = STARTING_POSITION;
+    int enPassantTile, enPassantPawnPosition, movesCounter;
+    int halfMoveCount, lastCapturedTurn, lastPawnMovedTurn;
+    string defaultFen = POSITION3;
+    public bool isGameEnd = false;
 
+    ChessNode currNode = new ChessNode();
 
-    // Ensure Singleton class
     void Awake()
     {
-        if (instance == null)
-            instance = this;
-        else if (instance != this)
-            Destroy(gameObject);
-        DontDestroyOnLoad(gameObject);
         InitGame(defaultFen);
     }
 
@@ -74,7 +36,7 @@ internal class GameManager : MonoBehaviour
         for(int i=0; i<64; i++){
             board[i] = ChessPiece.EMPTY;
         }
-
+        isGameEnd = false;
         InitGame(STARTING_POSITION);
     }
 
@@ -140,8 +102,6 @@ internal class GameManager : MonoBehaviour
         halfMoveCount = 0;
     }
 
-
-
     // Helper Functions for conversions
     public ChessPiece getPiece(ChessPiece n){
         return n & ChessPiece.PIECEMASK;
@@ -152,6 +112,8 @@ internal class GameManager : MonoBehaviour
     public ChessPiece[] getBoard(){
         return board;
     }
+
+    // Chess Notations
     public string PositionToNotation(int pos){
         // Determine the column (0 to 7) and row (0 to 7) from the position
         int column = pos % 8;
@@ -213,19 +175,32 @@ internal class GameManager : MonoBehaviour
     public bool getCanCastle(CastlingRights side){
         return canCastle[(int)side];
     }
+    public bool[] getCanCastle(){
+        return canCastle;
+    }
     public void setCanCastle(int side, bool state){
         canCastle[side] = state;
     }
+    public int getHalfMoveCount(){
+        return halfMoveCount;
+    }
+    public int getLastCapturedTurn(){
+        return lastCapturedTurn;
+    }
+    public int getLastPawnMovedTurn(){
+        return lastPawnMovedTurn;
+    }
 
+    // Chess piece movements
     public void MovePiece(int oriPos, int newPos){
         ChessPiece piece = getPiece(board[oriPos]);
         ChessPiece color = getColor(board[oriPos]);
         // If target position is empty, move to empty space
+
         
         if(board[newPos] == ChessPiece.EMPTY){
             // All pawn logics, including promotion, enpassant, move 2, move 1
             if(piece == ChessPiece.PAWN){
-
                 // If it's pawn and reached last row, promote piece
                 if((newPos >=0 && newPos <8) || (newPos >=56 && newPos <64)){
                     
@@ -236,6 +211,7 @@ internal class GameManager : MonoBehaviour
                     enPassantPawnPosition = -1;
                     halfMoveCount++;
                     
+                    lastPawnMovedTurn = halfMoveCount;
                     return;
                 }
 
@@ -247,6 +223,8 @@ internal class GameManager : MonoBehaviour
                     enPassantTile = -1;
                     enPassantPawnPosition = -1;
                     halfMoveCount++;
+
+                    lastPawnMovedTurn = halfMoveCount;
                     return;
                 }
 
@@ -257,6 +235,8 @@ internal class GameManager : MonoBehaviour
                     enPassantTile = (oriPos+newPos)/2;
                     enPassantPawnPosition = newPos;
                     halfMoveCount++;
+
+                    lastPawnMovedTurn = halfMoveCount;
                     return;
                 }
 
@@ -266,6 +246,8 @@ internal class GameManager : MonoBehaviour
                 enPassantTile = -1;
                 enPassantPawnPosition = -1;
                 halfMoveCount++;
+
+                lastPawnMovedTurn = halfMoveCount;
                 return;
             } 
 
@@ -316,6 +298,8 @@ internal class GameManager : MonoBehaviour
             CapturePiece(newPos);
             board[newPos] = PawnPromotion(color); // PROMOTION - Need to separate this for it's own function
             board[oriPos] = ChessPiece.EMPTY;
+            lastPawnMovedTurn = halfMoveCount+1;
+
         } else{
             // All other standard capture
             // If there is a piece on the target position, capture enemy piece
@@ -329,7 +313,6 @@ internal class GameManager : MonoBehaviour
 
         halfMoveCount++;
     }
-
     public ChessPiece PawnPromotion(ChessPiece color){
         return color | ChessPiece.QUEEN;
     }
@@ -353,8 +336,30 @@ internal class GameManager : MonoBehaviour
         }
         capturedPieces.Add(board[newPos]);
         board[newPos] = ChessPiece.EMPTY;
-    }
+
+        lastCapturedTurn = halfMoveCount;
+    } 
     
+
+    // Search related methods
+    public ChessNode toNode(){
+        ChessNode curr = new ChessNode();
+        curr.Board = board;
+        curr.Depth = 0;
+        curr.Parent = null;
+        curr.Children = null;
+        curr.capturedPieces = capturedPieces;
+        curr.isWhiteTurn = isWhiteTurn;
+        curr.canCastle = canCastle;
+        curr.enPassantTile=enPassantTile;
+        curr.enPassantPawnPosition=enPassantPawnPosition;
+        curr.movesCounter=movesCounter;
+        curr.halfMoveCount=halfMoveCount;
+        curr.lastCapturedTurn=lastCapturedTurn;
+        curr.lastPawnMovedTurn=lastPawnMovedTurn;
+        curr.isGameEnd=isGameEnd;
+        return curr;
+    }
 
     // DEBUG methods    
     public void _displayBoard(){

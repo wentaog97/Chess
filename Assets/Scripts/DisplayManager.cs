@@ -5,6 +5,7 @@ using UnityEngine;
 // Serve as the View in MVC
 public class DisplayManager : MonoBehaviour
 {   
+    public GameManager gameManager;
     // Prefabs
     public GameObject tilePrefab, piecePrefab;
     public Sprite pawnWhite, rookWhite, knightWhite, bishopWhite, queenWhite, kingWhite;
@@ -52,9 +53,8 @@ public class DisplayManager : MonoBehaviour
         
         InitializePieces();
     }
-
     void InitializeBoard(){
-        ChessPiece[] board = GameManager.instance.getBoard();
+        ChessPiece[] board = gameManager.getBoard();
         
         // Calculate Screen Size for Tile/Piece size adjustment
         tileSize = CalculateTileSize();
@@ -117,7 +117,7 @@ public class DisplayManager : MonoBehaviour
         mainCameraTransform.position = new Vector3(0, 0, -10); // Ensure camera is centered on the board
     }
     void InitializePieces(){
-        ChessPiece[] board = GameManager.instance.getBoard();
+        ChessPiece[] board = gameManager.getBoard();
         Vector3 offset = new Vector3(0,0,-1);
         float pieceSize = CalculateTileSize()*pieceSizeScaler;
 
@@ -253,7 +253,6 @@ public class DisplayManager : MonoBehaviour
         }
         highlightedTiles.Remove(pos);
     }
-
     public void ResetAllTileColor(){
         List<int> allHighLightedPos = new List<int>(highlightedTiles);
         foreach(int pos in allHighLightedPos){
@@ -265,12 +264,10 @@ public class DisplayManager : MonoBehaviour
     public void CapturePiece(int newPos){
         Destroy(pieces[newPos]);
     }
-
     public void PawnPromotion(int pos){
         SpriteRenderer sr = pieces[pos].GetComponent<SpriteRenderer>();
-        sr.sprite = (GameManager.instance.getBoard()[pos] & ChessPiece.BLACK) != 0 ? queenBlack : queenWhite;
+        sr.sprite = (gameManager.getBoard()[pos] & ChessPiece.BLACK) != 0 ? queenBlack : queenWhite;
     }
-
     public void Castling(int oriPos, int newPos){
         int rookPos, targetPos;
         // Debug.Log(oriPos + ", " + newPos);
@@ -292,7 +289,6 @@ public class DisplayManager : MonoBehaviour
 
 
     }
-
 
 }
 
