@@ -24,28 +24,40 @@ public enum ChessPiece
 }
 
 public enum CastlingRights{
-    WHITE_KING_SIDE,
-    WHITE_QUEEN_SIDE,
-    BLACK_KING_SIDE,
-    BLACK_QUEEN_SIDE
+    WHITE_KING_SIDE = 0,
+    WHITE_QUEEN_SIDE = 1,
+    BLACK_KING_SIDE = 2,
+    BLACK_QUEEN_SIDE = 3
+}
+
+public class MoveRecord{
+    int oriPos;
+    int newPos;
+    ChessPiece capturedPiece;
 }
 
 // This global class will save all of the game states, as well as commonly used methods
-// Model in MVC
+// Serve as the model in MVC
 internal class GameManager : MonoBehaviour
 {
+    const string STARTING_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    const string POSITION2 = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0";
+    const string POSITION3 = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - 0 0";
+    const string POSITION4 = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
+
     public static GameManager instance = null;
 
     // Game States
     ChessPiece[] board = new ChessPiece[64];
-    List<int> capturedPieces;
+    List<ChessPiece> capturedPieces = new List<ChessPiece>();
     bool isWhiteTurn;
     bool[] canCastle = new bool[4];
     int enPassantTile;
-    int halfMove;
-    int fullMove;
+    int enPassantPawnPosition;
+    int halfMoveCount;
     int movesCounter;
-    string defaultFen = "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 1";  
+    string defaultFen = STARTING_POSITION;
+
 
     // Ensure Singleton class
     void Awake()
@@ -58,7 +70,15 @@ internal class GameManager : MonoBehaviour
         InitGame(defaultFen);
     }
 
-    void InitGame(string fen)
+    public void ResetGame(){
+        for(int i=0; i<64; i++){
+            board[i] = ChessPiece.EMPTY;
+        }
+
+        InitGame(STARTING_POSITION);
+    }
+
+    public void InitGame(string fen)
     {  
         string[] gameInfo = fen.Split(' ');
         InitializeBoard(gameInfo[0]);
@@ -68,34 +88,6 @@ internal class GameManager : MonoBehaviour
         _displayInfo();
     }
 
-    // Helper Functions for conversions
-    public ChessPiece getPiece(ChessPiece n){
-        return n & ChessPiece.PIECEMASK;
-    }
-    public ChessPiece getColor(ChessPiece n){
-        return n & ChessPiece.BLACK;
-    }
-    public ChessPiece[] getBoard(){
-        return board;
-    }
-    public string PositionToNotation(int pos){
-        int c = pos%8;
-        int r = pos/8;
-
-        char col = (char)(c+'a');
-        char row = (char)(7-r+'1');
-
-        return ""+col+row;
-    }
-    public int NotationToPosition(string str){
-        char col = str[0];
-        char row = str[1];
-
-        int c = col - 'a';
-        int r = 7 - (row - '1');
-
-        return r*8+c;
-    }
 
     // Takes in the position part of the FEN and initialize the board
     void InitializeBoard(string fen){
@@ -144,17 +136,76 @@ internal class GameManager : MonoBehaviour
         
         if(enPassantNotation[0] == '-') enPassantTile = -1;
         else enPassantTile = NotationToPosition(enPassantNotation);
+
+        halfMoveCount = 0;
+    }
+
+
+
+    // Helper Functions for conversions
+    public ChessPiece getPiece(ChessPiece n){
+        return n & ChessPiece.PIECEMASK;
+    }
+    public ChessPiece getColor(ChessPiece n){
+        return n & ChessPiece.BLACK;
+    }
+    public ChessPiece[] getBoard(){
+        return board;
+    }
+    public string PositionToNotation(int pos){
+        // Determine the column (0 to 7) and row (0 to 7) from the position
+        int column = pos % 8;
+        int row = pos / 8;
+
+        // Convert column to corresponding letter ('a' to 'h')
+        char columnLetter = (char)('a' + column);
+
+        // Convert row to corresponding number ('1' to '8')
+        char rowNumber = (char)('1' + row);
+
+        // Combine the column letter and row number to form the chess notation
+        return $"{columnLetter}{rowNumber}";
+    }
+    public int NotationToPosition(string str){
+
+        // Extract the column letter and row number from the input string
+        char columnLetter = str[0];
+        char rowNumber = str[1];
+
+        // Validate column letter ('a' to 'h')
+        if (columnLetter < 'a' || columnLetter > 'h')
+        {
+            throw new ArgumentException("Column letter must be between 'a' and 'h'.");
+        }
+
+        // Validate row number ('1' to '8')
+        if (rowNumber < '1' || rowNumber > '8')
+        {
+            throw new ArgumentException("Row number must be between '1' and '8'.");
+        }
+
+        // Convert column letter to column index (0 to 7)
+        int column = columnLetter - 'a';
+
+        // Convert row number to row index (0 to 7)
+        int row = rowNumber - '1';
+
+        // Calculate the position in the 64-size array
+        return row * 8 + column;
     }
 
     // States management methods
-    public bool getTurn(){
-        return isWhiteTurn;
+    public ChessPiece getTurn(){
+        return isWhiteTurn ? ChessPiece.WHITE : ChessPiece.BLACK;
     }
     public void changeTurn(){
         isWhiteTurn = !isWhiteTurn;
     }
     public int getEnpassantTile(){
         return enPassantTile;
+    }
+    public int getEnpassantPawnPosition(){
+        return enPassantPawnPosition;
     }
     public void setEnpassantTile(int pos){
         enPassantTile = pos;
@@ -165,15 +216,145 @@ internal class GameManager : MonoBehaviour
     public void setCanCastle(int side, bool state){
         canCastle[side] = state;
     }
-    public void addCapturedPieces(int piece){
-        capturedPieces.Add(piece);
-    }
+
     public void MovePiece(int oriPos, int newPos){
-        ChessPiece piece = board[oriPos];
-        board[newPos] = board[oriPos];
-        board[oriPos] = ChessPiece.EMPTY;
+        ChessPiece piece = getPiece(board[oriPos]);
+        ChessPiece color = getColor(board[oriPos]);
+        // If target position is empty, move to empty space
+        
+        if(board[newPos] == ChessPiece.EMPTY){
+            // All pawn logics, including promotion, enpassant, move 2, move 1
+            if(piece == ChessPiece.PAWN){
+
+                // If it's pawn and reached last row, promote piece
+                if((newPos >=0 && newPos <8) || (newPos >=56 && newPos <64)){
+                    
+                    board[newPos] = PawnPromotion(color); // PROMOTION - Need to separate this for it's own function
+                    board[oriPos] = ChessPiece.EMPTY;
+                    
+                    enPassantTile = -1;
+                    enPassantPawnPosition = -1;
+                    halfMoveCount++;
+                    
+                    return;
+                }
+
+                // If it's pawn and attack sqaure can be enpassant
+                if(newPos == enPassantTile){
+                    board[newPos] = board[oriPos];
+                    board[oriPos] = 0;
+                    CapturePiece(enPassantPawnPosition);
+                    enPassantTile = -1;
+                    enPassantPawnPosition = -1;
+                    halfMoveCount++;
+                    return;
+                }
+
+                // If it's pawn and moved 2 squares mark enpassant info
+                if(Math.Abs(newPos-oriPos)==16){
+                    board[newPos] = board[oriPos];
+                    board[oriPos] = ChessPiece.EMPTY;
+                    enPassantTile = (oriPos+newPos)/2;
+                    enPassantPawnPosition = newPos;
+                    halfMoveCount++;
+                    return;
+                }
+
+                // If it's pawn and moved 1 square
+                board[newPos] = board[oriPos];
+                board[oriPos] = 0;
+                enPassantTile = -1;
+                enPassantPawnPosition = -1;
+                halfMoveCount++;
+                return;
+            } 
+
+            // Castle move logic
+            if(piece == ChessPiece.KING && (Math.Abs(newPos-oriPos)==2)){
+                if((newPos-oriPos)==-2){ // Queen Side Castle
+                    board[oriPos-1]=board[oriPos-4];
+                    board[oriPos-4]=0;
+                } else { // King Side Castle
+                    board[oriPos+1]=board[oriPos+3];
+                    board[oriPos+3]=0;
+                }
+            }
+
+            // If king moves, remove all castle availability
+            if(piece == ChessPiece.KING){ //&& !testingMode
+                if(color==ChessPiece.WHITE){
+                    canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
+                    canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
+                } else {
+                    canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
+                    canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
+                }
+            }
+
+            // If rook moves, remove the castle availability of that side
+            if(piece == ChessPiece.ROOK){ //&& !testingMode
+                if(color==ChessPiece.WHITE){
+                    if(oriPos == 56) canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
+                    if(oriPos == 63) canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
+                } else {
+                    if(oriPos == 0) canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
+                    if(oriPos == 7) canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
+                }
+            }
+
+            // All other piece when moving to empty square
+            board[newPos] = board[oriPos];
+            board[oriPos] = 0;
+            enPassantTile = -1;
+            enPassantPawnPosition = -1;
+            halfMoveCount++;
+            return;
+        }  
+
+        // Promotion and capture
+        if((piece == ChessPiece.PAWN) && ((newPos >=0 && newPos <8) || (newPos >=56 && newPos <64))) {
+            CapturePiece(newPos);
+            board[newPos] = PawnPromotion(color); // PROMOTION - Need to separate this for it's own function
+            board[oriPos] = ChessPiece.EMPTY;
+        } else{
+            // All other standard capture
+            // If there is a piece on the target position, capture enemy piece
+            CapturePiece(newPos); //capturedPieces.push_back(board[newPos]);
+            board[newPos] = board[oriPos];
+            board[oriPos] = 0;
+        }
+
+        enPassantTile = -1;
+        enPassantPawnPosition = -1;
+
+        halfMoveCount++;
     }
 
+    public ChessPiece PawnPromotion(ChessPiece color){
+        return color | ChessPiece.QUEEN;
+    }
+    public void CapturePiece(int newPos){
+        if(getPiece(board[newPos]) == ChessPiece.ROOK){
+            switch(newPos){
+                case 0:
+                    canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
+                    break;
+                case 7:
+                    canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
+                    break;
+                case 56:
+                    canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
+                    break;
+                case 63:
+                    canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
+                    break;
+                default: break;
+            }
+        }
+        capturedPieces.Add(board[newPos]);
+        board[newPos] = ChessPiece.EMPTY;
+    }
+    
 
     // DEBUG methods    
     public void _displayBoard(){
@@ -239,6 +420,7 @@ internal class GameManager : MonoBehaviour
         gameInfo+="isWhiteTurn = " + isWhiteTurn + "\n";
         gameInfo+="canCastle = " + canCastle[0] + " " + canCastle[1] + " " + canCastle[2] + " " + canCastle[3] + " " + "\n";
         gameInfo+="enPassantTile = " + enPassantTile + ", in notation = " + PositionToNotation(enPassantTile) + "\n";
+        gameInfo+="enPassantPawnPosition = " + enPassantPawnPosition + "\n";
         gameInfo+="isWhiteTurn = " + isWhiteTurn + "\n";
         Debug.Log(gameInfo);
     }

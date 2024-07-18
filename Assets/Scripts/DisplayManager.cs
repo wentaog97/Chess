@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-// View in MVC
+// Serve as the View in MVC
 public class DisplayManager : MonoBehaviour
 {   
     // Prefabs
@@ -13,6 +13,7 @@ public class DisplayManager : MonoBehaviour
     // Board related
     List<GameObject> tiles = new List<GameObject>();
     List<GameObject> pieces = new List<GameObject>();
+    //List<GameObject> capturedPieces = new List<GameObject>();
 
     // Camera/display related
     public Transform mainCameraTransform;
@@ -31,12 +32,7 @@ public class DisplayManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {   
-        ChessPiece[] board = GameManager.instance.getBoard();
-        
-        // Calculate Screen Size for Tile/Piece size adjustment
-        tileSize = CalculateTileSize();
-        InitializeTiles();
-        InitializePieces();
+        InitializeBoard();
     }
 
     // Update is called once per frame
@@ -44,6 +40,26 @@ public class DisplayManager : MonoBehaviour
     {
         // If display dimension change, readjust everything
         if (screenWidth != Screen.width || screenHeight != Screen.height) DisplayDimensionChange();
+    }
+
+    public void ResetGame(){
+        foreach(GameObject piece in pieces){
+            Destroy(piece);
+        }
+        pieces.Clear();
+
+        Debug.Log(pieces.Count);
+        
+        InitializePieces();
+    }
+
+    void InitializeBoard(){
+        ChessPiece[] board = GameManager.instance.getBoard();
+        
+        // Calculate Screen Size for Tile/Piece size adjustment
+        tileSize = CalculateTileSize();
+        InitializeTiles();
+        InitializePieces();
     }
 
     // Board Display
@@ -198,6 +214,9 @@ public class DisplayManager : MonoBehaviour
     public List<GameObject> getTiles(){
         return tiles;
     }
+    public GameObject getTile(int pos){
+        return tiles[pos];
+    }
 
     // Only moves the front end!
     public void MovePiece(int oriPos, int newPos){
@@ -241,6 +260,37 @@ public class DisplayManager : MonoBehaviour
             ResetTileColor(pos);
         }
         highlightedTiles.Clear();
+    }
+
+    public void CapturePiece(int newPos){
+        Destroy(pieces[newPos]);
+    }
+
+    public void PawnPromotion(int pos){
+        SpriteRenderer sr = pieces[pos].GetComponent<SpriteRenderer>();
+        sr.sprite = (GameManager.instance.getBoard()[pos] & ChessPiece.BLACK) != 0 ? queenBlack : queenWhite;
+    }
+
+    public void Castling(int oriPos, int newPos){
+        int rookPos, targetPos;
+        // Debug.Log(oriPos + ", " + newPos);
+
+        if(oriPos==4){ // Black
+            if(newPos==2){
+                targetPos = 3; rookPos = 0;
+            } else {
+                targetPos = 5; rookPos = 7;
+            }
+        } else { // White
+            if(newPos==58){
+                targetPos = 59; rookPos = 56;
+            } else {
+                targetPos = 61; rookPos = 63;     
+            }
+        }
+        MovePiece(rookPos, targetPos);
+
+
     }
 
 
