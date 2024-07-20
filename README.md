@@ -72,6 +72,25 @@ Several bugs were caught during testing. Some notable ones are:
 - King can still castle after rook has been captured
 
 ### Performance Testing Results
+Example bug
+
+NODE STEMMING FROM 37
+
+[ ] [ ] [ ] [ ] [ ] [ ] [ ] [ ] 
+[ ] [ ] [p] [ ] [ ] [ ] [ ] [ ] 
+[ ] [ ] [ ] [p] [ ] [ ] [ ] [ ] 
+[K] [P] [ ] [ ] [ ] [ ] [ ] [r] 
+[ ] [R] [ ] [ ] [P] [p] [ ] [k] 
+[ ] [ ] [ ] [ ] [ ] [ ] [ ] [ ] 
+[ ] [ ] [ ] [ ] [ ] [ ] [P] [ ] 
+[ ] [ ] [ ] [ ] [ ] [ ] [ ] [ ] 
+
+Ori = 37 New = 45
+Ori = 37 New = 44
+Node count for pos 37 = 2
 
 ## ChessBot Implementation
+Evaluation method calculating board value
+DFS & alpha beta pruning
+
 

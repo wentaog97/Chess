@@ -8,49 +8,40 @@ using UnityEngine;
 public class GameManager : MonoBehaviour
 {   
     // Example starting positions
+    // Perft result can be found at: https://www.chessprogramming.org/Perft_Results
     const string 
         STARTING_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 
         POSITION2 = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0",
         POSITION3 = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 0",
-        POSITION4 = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1"
+        POSITION4 = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        POSITION5 = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        POSITION6 = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10"
     ;
-
-    // Game States
-    ChessPiece[] board = new ChessPiece[64];
-    List<ChessPiece> capturedPieces = new List<ChessPiece>();
-    bool isWhiteTurn;
-    bool[] canCastle = new bool[4];
-    int enPassantTile, enPassantPawnPosition, movesCounter;
-    int halfMoveCount, lastCapturedTurn, lastPawnMovedTurn;
-    string defaultFen = POSITION3;
-    public bool isGameEnd = false;
-
-    ChessNode currNode = new ChessNode();
+    string defaultFen = STARTING_POSITION;
+    // Curr game states all saved in ChessNode class
+    public ChessNode currGame = new ChessNode();
+    LinkedList<ChessNode> moveHistory = new LinkedList<ChessNode>();
 
     void Awake()
     {
         InitGame(defaultFen);
     }
-
     public void ResetGame(){
         for(int i=0; i<64; i++){
-            board[i] = ChessPiece.EMPTY;
+            currGame.board[i] = ChessPiece.EMPTY;
         }
-        isGameEnd = false;
+        currGame.isGameEnd = false;
         InitGame(STARTING_POSITION);
     }
-
-    public void InitGame(string fen)
+    void InitGame(string fen)
     {  
         string[] gameInfo = fen.Split(' ');
         InitializeBoard(gameInfo[0]);
         InitializeGameStates(gameInfo[1], gameInfo[2], gameInfo[3], gameInfo[4], gameInfo[5]);
 
-        _displayBoard();
-        _displayInfo();
+        _displayBoard(currGame);
+        _displayInfo(currGame);
     }
-
-
     // Takes in the position part of the FEN and initialize the board
     void InitializeBoard(string fen){
         // Initialize the board position
@@ -80,26 +71,25 @@ public class GameManager : MonoBehaviour
                     case '/': continue;
                     default: break;
                 }
-                board[index++] = piece;
+                currGame.board[index++] = piece;
             }
         }
     }
-
     // Initialize the game states
     void InitializeGameStates(string turn, string castlingRights, string enPassantNotation, string halfMove, string fullMove){
-        isWhiteTurn = (turn[0] == 'w');
+        currGame.isWhiteTurn = (turn[0] == 'w');
 
         foreach (char c in castlingRights){
-            if(c=='K') canCastle[0]=true;
-            if(c=='Q') canCastle[1]=true;
-            if(c=='k') canCastle[2]=true;
-            if(c=='q') canCastle[3]=true;
+            if(c=='K') currGame.canCastle[0]=true;
+            if(c=='Q') currGame.canCastle[1]=true;
+            if(c=='k') currGame.canCastle[2]=true;
+            if(c=='q') currGame.canCastle[3]=true;
         }
         
-        if(enPassantNotation[0] == '-') enPassantTile = -1;
-        else enPassantTile = NotationToPosition(enPassantNotation);
+        if(enPassantNotation[0] == '-') currGame.enPassantTile = -1;
+        else currGame.enPassantTile = NotationToPosition(enPassantNotation);
 
-        halfMoveCount = 0;
+        currGame.halfMoveCount = 0;
     }
 
     // Helper Functions for conversions
@@ -110,7 +100,7 @@ public class GameManager : MonoBehaviour
         return n & ChessPiece.BLACK;
     }
     public ChessPiece[] getBoard(){
-        return board;
+        return currGame.board;
     }
 
     // Chess Notations
@@ -155,214 +145,47 @@ public class GameManager : MonoBehaviour
         // Calculate the position in the 64-size array
         return row * 8 + column;
     }
-
-    // States management methods
-    public ChessPiece getTurn(){
-        return isWhiteTurn ? ChessPiece.WHITE : ChessPiece.BLACK;
-    }
-    public void changeTurn(){
-        isWhiteTurn = !isWhiteTurn;
-    }
-    public int getEnpassantTile(){
-        return enPassantTile;
-    }
-    public int getEnpassantPawnPosition(){
-        return enPassantPawnPosition;
-    }
-    public void setEnpassantTile(int pos){
-        enPassantTile = pos;
-    }
-    public bool getCanCastle(CastlingRights side){
-        return canCastle[(int)side];
-    }
-    public bool[] getCanCastle(){
-        return canCastle;
-    }
-    public void setCanCastle(int side, bool state){
-        canCastle[side] = state;
-    }
-    public int getHalfMoveCount(){
-        return halfMoveCount;
-    }
-    public int getLastCapturedTurn(){
-        return lastCapturedTurn;
-    }
-    public int getLastPawnMovedTurn(){
-        return lastPawnMovedTurn;
-    }
-
-    // Chess piece movements
-    public void MovePiece(int oriPos, int newPos){
-        ChessPiece piece = getPiece(board[oriPos]);
-        ChessPiece color = getColor(board[oriPos]);
-        // If target position is empty, move to empty space
-
-        
-        if(board[newPos] == ChessPiece.EMPTY){
-            // All pawn logics, including promotion, enpassant, move 2, move 1
-            if(piece == ChessPiece.PAWN){
-                // If it's pawn and reached last row, promote piece
-                if((newPos >=0 && newPos <8) || (newPos >=56 && newPos <64)){
-                    
-                    board[newPos] = PawnPromotion(color); // PROMOTION - Need to separate this for it's own function
-                    board[oriPos] = ChessPiece.EMPTY;
-                    
-                    enPassantTile = -1;
-                    enPassantPawnPosition = -1;
-                    halfMoveCount++;
-                    
-                    lastPawnMovedTurn = halfMoveCount;
-                    return;
-                }
-
-                // If it's pawn and attack sqaure can be enpassant
-                if(newPos == enPassantTile){
-                    board[newPos] = board[oriPos];
-                    board[oriPos] = 0;
-                    CapturePiece(enPassantPawnPosition);
-                    enPassantTile = -1;
-                    enPassantPawnPosition = -1;
-                    halfMoveCount++;
-
-                    lastPawnMovedTurn = halfMoveCount;
-                    return;
-                }
-
-                // If it's pawn and moved 2 squares mark enpassant info
-                if(Math.Abs(newPos-oriPos)==16){
-                    board[newPos] = board[oriPos];
-                    board[oriPos] = ChessPiece.EMPTY;
-                    enPassantTile = (oriPos+newPos)/2;
-                    enPassantPawnPosition = newPos;
-                    halfMoveCount++;
-
-                    lastPawnMovedTurn = halfMoveCount;
-                    return;
-                }
-
-                // If it's pawn and moved 1 square
-                board[newPos] = board[oriPos];
-                board[oriPos] = 0;
-                enPassantTile = -1;
-                enPassantPawnPosition = -1;
-                halfMoveCount++;
-
-                lastPawnMovedTurn = halfMoveCount;
-                return;
-            } 
-
-            // Castle move logic
-            if(piece == ChessPiece.KING && (Math.Abs(newPos-oriPos)==2)){
-                if((newPos-oriPos)==-2){ // Queen Side Castle
-                    board[oriPos-1]=board[oriPos-4];
-                    board[oriPos-4]=0;
-                } else { // King Side Castle
-                    board[oriPos+1]=board[oriPos+3];
-                    board[oriPos+3]=0;
-                }
-            }
-
-            // If king moves, remove all castle availability
-            if(piece == ChessPiece.KING){ //&& !testingMode
-                if(color==ChessPiece.WHITE){
-                    canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
-                    canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
-                } else {
-                    canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
-                    canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
-                }
-            }
-
-            // If rook moves, remove the castle availability of that side
-            if(piece == ChessPiece.ROOK){ //&& !testingMode
-                if(color==ChessPiece.WHITE){
-                    if(oriPos == 56) canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
-                    if(oriPos == 63) canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
-                } else {
-                    if(oriPos == 0) canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
-                    if(oriPos == 7) canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
-                }
-            }
-
-            // All other piece when moving to empty square
-            board[newPos] = board[oriPos];
-            board[oriPos] = 0;
-            enPassantTile = -1;
-            enPassantPawnPosition = -1;
-            halfMoveCount++;
-            return;
-        }  
-
-        // Promotion and capture
-        if((piece == ChessPiece.PAWN) && ((newPos >=0 && newPos <8) || (newPos >=56 && newPos <64))) {
-            CapturePiece(newPos);
-            board[newPos] = PawnPromotion(color); // PROMOTION - Need to separate this for it's own function
-            board[oriPos] = ChessPiece.EMPTY;
-            lastPawnMovedTurn = halfMoveCount+1;
-
-        } else{
-            // All other standard capture
-            // If there is a piece on the target position, capture enemy piece
-            CapturePiece(newPos); //capturedPieces.push_back(board[newPos]);
-            board[newPos] = board[oriPos];
-            board[oriPos] = 0;
-        }
-
-        enPassantTile = -1;
-        enPassantPawnPosition = -1;
-
-        halfMoveCount++;
-    }
-    public ChessPiece PawnPromotion(ChessPiece color){
-        return color | ChessPiece.QUEEN;
-    }
-    public void CapturePiece(int newPos){
-        if(getPiece(board[newPos]) == ChessPiece.ROOK){
-            switch(newPos){
-                case 0:
-                    canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
-                    break;
-                case 7:
-                    canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
-                    break;
-                case 56:
-                    canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
-                    break;
-                case 63:
-                    canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
-                    break;
-                default: break;
-            }
-        }
-        capturedPieces.Add(board[newPos]);
-        board[newPos] = ChessPiece.EMPTY;
-
-        lastCapturedTurn = halfMoveCount;
-    } 
     
-
-    // Search related methods
-    public ChessNode toNode(){
-        ChessNode curr = new ChessNode();
-        curr.Board = board;
-        curr.Depth = 0;
-        curr.Parent = null;
-        curr.Children = null;
-        curr.capturedPieces = capturedPieces;
-        curr.isWhiteTurn = isWhiteTurn;
-        curr.canCastle = canCastle;
-        curr.enPassantTile=enPassantTile;
-        curr.enPassantPawnPosition=enPassantPawnPosition;
-        curr.movesCounter=movesCounter;
-        curr.halfMoveCount=halfMoveCount;
-        curr.lastCapturedTurn=lastCapturedTurn;
-        curr.lastPawnMovedTurn=lastPawnMovedTurn;
-        curr.isGameEnd=isGameEnd;
-        return curr;
+    // Move history related
+    public void AddToMoveHistory(ChessNode oldNode){
+        moveHistory.AddLast(oldNode);
+    }
+    public void UndoLastHalfMove(){
+        currGame = moveHistory.Last.Value;
+        moveHistory.RemoveLast();
+    }
+    public void UndoLastFullMove(){
+        moveHistory.RemoveLast();
+        currGame = moveHistory.Last.Value;
+        moveHistory.RemoveLast();
     }
 
     // DEBUG methods    
-    public void _displayBoard(){
+    public void _displayBoard(ChessNode node){
+        Debug.Log(_toStringBoard(node));
+    }
+    public void _displayBoard_bits(ChessNode node){
+        string str = "";
+        for(int r=0; r<8; r++){
+            for(int c=0; c<8; c++){
+                str+="[";
+
+                int pos = r*8+c;
+                if(node.board[pos]==0) str+="0";
+                else str+= Convert.ToString((int)node.board[pos], 2).PadLeft(8, '0');
+                
+
+                str+="] ";
+            }
+            str += "\n";
+        }
+
+        Debug.Log(str);
+    }
+    public void _displayInfo(ChessNode node){
+        Debug.Log(_toStringGameInfo(node));
+    }
+    public string _toStringBoard(ChessNode node){
         string str = "";
         for (int r = 0; r < 8; r++)
         {
@@ -371,7 +194,7 @@ public class GameManager : MonoBehaviour
                 str += "[";
 
                 int pos = r * 8 + c;
-                ChessPiece pieceValue = board[pos];
+                ChessPiece pieceValue = node.board[pos];
 
                 if (pieceValue == ChessPiece.EMPTY)
                 {
@@ -399,37 +222,45 @@ public class GameManager : MonoBehaviour
             }
             str += "\n";
         }
-
-        Debug.Log(str);
+        return str;
     }
-    public void _displayBoard_bits(){
-        string str = "";
-        for(int r=0; r<8; r++){
-            for(int c=0; c<8; c++){
-                str+="[";
-
-                int pos = r*8+c;
-                if(board[pos]==0) str+="0";
-                else str+= Convert.ToString((int)board[pos], 2).PadLeft(8, '0');
-                
-
-                str+="] ";
-            }
-            str += "\n";
-        }
-
-        Debug.Log(str);
-    }
-    public void _displayInfo(){
+    public string _toStringGameInfo(ChessNode node){
         string gameInfo = "";
-        gameInfo+="isWhiteTurn = " + isWhiteTurn + "\n";
-        gameInfo+="canCastle = " + canCastle[0] + " " + canCastle[1] + " " + canCastle[2] + " " + canCastle[3] + " " + "\n";
-        gameInfo+="enPassantTile = " + enPassantTile + ", in notation = " + PositionToNotation(enPassantTile) + "\n";
-        gameInfo+="enPassantPawnPosition = " + enPassantPawnPosition + "\n";
-        gameInfo+="isWhiteTurn = " + isWhiteTurn + "\n";
-        Debug.Log(gameInfo);
+        gameInfo+="isWhiteTurn = " + node.isWhiteTurn + "\n";
+        gameInfo+="canCastle = " + node.canCastle[0] + " " + node.canCastle[1] + " " + node.canCastle[2] + " " + node.canCastle[3] + " " + "\n";
+        gameInfo+="enPassantTile = " + node.enPassantTile + ", in notation = " + PositionToNotation(node.enPassantTile) + "\n";
+        gameInfo+="enPassantPawnPosition = " + node.enPassantPawnPosition + "\n";
+        gameInfo+="isWhiteTurn = " + node.isWhiteTurn + "\n";
+        return gameInfo;
     }
 }
 
 
+
+
+/*
+
+// Search related methods
+    public ChessNode toNode(){
+        ChessNode curr = new ChessNode();
+        curr.board = board;
+        curr.depth = 0;
+        curr.parent = null;
+        curr.children = null;
+        curr.capturedPieces = capturedPieces;
+        curr.isWhiteTurn = isWhiteTurn;
+        curr.canCastle = canCastle;
+        curr.enPassantTile=enPassantTile;
+        curr.enPassantPawnPosition=enPassantPawnPosition;
+        curr.movesCounter=movesCounter;
+        curr.halfMoveCount=halfMoveCount;
+        curr.lastCapturedTurn=lastCapturedTurn;
+        curr.lastPawnMovedTurn=lastPawnMovedTurn;
+        curr.isGameEnd=isGameEnd;
+        return curr;
+    }
+
+
+
+*/
 

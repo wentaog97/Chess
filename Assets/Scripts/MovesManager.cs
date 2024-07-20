@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Diagnostics;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -9,20 +11,18 @@ public class MovesManager : MonoBehaviour
     public GameManager gameManager;
     public DisplayManager displayManager;
     public UIManager uIManager;
-    int selected = -1;
+    int selected = -1, movingTo = -1;
     HashSet<GameObject> validTiles = new HashSet<GameObject>();
-
     public ChessPiece player1Color = ChessPiece.WHITE, player2Color = ChessPiece.BLACK;
-    
     public ChessBot bot1, bot2;
-
     public bool isBot1 = false, isBot2 = false;
+    bool isPromoting = false;
 
     // Update is called once per frame
     void Update()
     {   
-        if(!gameManager.isGameEnd){
-            if (gameManager.getTurn()==player1Color) {
+        if(!gameManager.currGame.isGameEnd){
+            if (gameManager.currGame.getTurn()==player1Color) {
                 if(isBot1) bot1.BotMove();
                 else if (Input.GetMouseButtonDown(0)) HandleClick(); 
             } else {
@@ -46,32 +46,70 @@ public class MovesManager : MonoBehaviour
     // - if not reset everything
     void HandleClick(){
         GameObject objectClicked = DetectClickedObject(); // Will only return if a tile has been clicked
-
+        
         if(objectClicked == null) { // If the player clicked somewhere else other than the board, reset
+            if(isPromoting){
+                displayManager.DoneWithPawnPromotion();
+                isPromoting=false;
+            }
             ResetThisTurn();
             return;
         } 
 
-        int pos = CalculateTilePosition(objectClicked);
+        if(isPromoting){
+            GameObject options = displayManager.promotionOptions;
+            switch(objectClicked.name){
+                case ("Queen"):
+                    // UnityEngine.Debug.Log("Promoting to queen");
+                    MovePiece(gameManager.currGame, selected, movingTo,0);
+                    break;
+                case ("Rook"):
+                    // UnityEngine.Debug.Log("Promoting to rook");
+                    MovePiece(gameManager.currGame, selected, movingTo,1);
+                    break;
+                case ("Knight"):
+                    // UnityEngine.Debug.Log("Promoting to knight");
+                    MovePiece(gameManager.currGame, selected, movingTo,2);
+                    break;
+                case ("Bishop"):
+                    // UnityEngine.Debug.Log("Promoting to bishop");
+                    MovePiece(gameManager.currGame, selected, movingTo,3);
+                    break;
+                default:
+                    break;
+            }
+            displayManager.DoneWithPawnPromotion();
+            isPromoting=false;
+            // Reset selected and wipe all highlights
+            ResetThisTurn();
+            // If reach end game, display it
+            CheckForCheckMate(gameManager.currGame);
+            // Updates the display
+            uIManager.displayGameInfo();
+            return;
+        }
+        // UnityEngine.Debug.Log("DEBUG2");
+
+        movingTo = CalculateTilePosition(objectClicked);
         
         // No selected piece, we need to check if clicked is a selectable piece
         if(selected == -1) { 
             
-            ChessPiece clickedPosition = gameManager.getBoard()[pos];
+            ChessPiece clickedPosition = gameManager.currGame.board[movingTo];
 
             if(clickedPosition!=ChessPiece.EMPTY){  // If have a piece, select it
 
-                ChessPiece turn = gameManager.getTurn();
+                ChessPiece turn = gameManager.currGame.getTurn();
                 ChessPiece color = gameManager.getColor(clickedPosition);
 
                 if(turn == color){
-                    selected = pos;
+                    selected = movingTo;
 
                     // Highlight selected piece
-                    displayManager.HighlightTile(pos);
+                    displayManager.HighlightTile(movingTo);
 
                     // Highlight all valid tile
-                    foreach (int validPos in GetLegalMoves(selected)){
+                    foreach (int validPos in GetLegalMoves(gameManager.currGame,selected)){
                         validTiles.Add(displayManager.getTile(validPos));
                         displayManager.HighlightTile(validPos);
                     }
@@ -81,21 +119,28 @@ public class MovesManager : MonoBehaviour
             } 
             // If clicked an empty tile do nothing 
             return;
-            
         } 
         
-        // In here we will have piece selected, we need to check if the tile clicked is a valid move
+        // In here we will have a piece selected, we need to check if the tile clicked is a valid move
         if(isClickedValidTile(objectClicked)){
-            MovePiece(selected, pos);
+            if(gameManager.getPiece(gameManager.currGame.board[selected])==ChessPiece.PAWN&&((movingTo>=0&&movingTo<8)||(movingTo>=56&&movingTo<64))){
+                isPromoting = true;
+                displayManager.PromotingPawn(selected);
+                return;
+            }
+
+            MovePiece(gameManager.currGame, selected, movingTo);
             // Change Turn after move has been made
-            gameManager.changeTurn();
+            // gameManager.currGame.changeTurn();
+
         } 
 
         // Reset selected and wipe all highlights
         ResetThisTurn();
 
         // If reach end game, display it
-        CheckForCheckMate();
+        CheckForCheckMate(gameManager.currGame);
+        // UnityEngine.Debug.Log(selected+", " + movingTo + ", " + isPromoting);
 
         // Updates the display
         uIManager.displayGameInfo();
@@ -107,13 +152,21 @@ public class MovesManager : MonoBehaviour
         Collider2D[] hits = Physics2D.OverlapPointAll(mousePosition);
         
         foreach (Collider2D hit in hits)
-        {
+        {   
+            if(isPromoting&&hit.CompareTag("PromotionTile")){
+                clickedObject = hit.gameObject;
+                break;
+            }
+
             if (hit.CompareTag("Tile"))
             {
                 clickedObject = hit.gameObject;
                 break;
-            }
+            } 
+            
         }
+
+        //UnityEngine.Debug.Log(clickedObject);
         return clickedObject;
     }
 
@@ -130,43 +183,43 @@ public class MovesManager : MonoBehaviour
     }
 
     // Castling related
-    bool canKingCastle(CastlingRights side) {
+    bool canKingCastle(ChessNode node, CastlingRights side) {
         int kingPos, rookPos, start, finish;
         HashSet<int> underAttack = null;
         
         switch(side){
             case CastlingRights.WHITE_KING_SIDE:
                 kingPos = 60; rookPos = 63; start = 60; finish = 62;
-                underAttack = CheckAllPosBeingAttackedBy(ChessPiece.BLACK);
+                underAttack = CheckAllPosBeingAttackedBy(node, ChessPiece.BLACK);
                 break;
             case CastlingRights.WHITE_QUEEN_SIDE: 
                 kingPos = 60; rookPos = 56; start = 58; finish = 60;
-                underAttack = CheckAllPosBeingAttackedBy(ChessPiece.BLACK);
+                underAttack = CheckAllPosBeingAttackedBy(node, ChessPiece.BLACK);
                 break;
             case CastlingRights.BLACK_KING_SIDE: 
                 kingPos = 4; rookPos = 7; start = 4; finish = 6; 
-                underAttack = CheckAllPosBeingAttackedBy(ChessPiece.WHITE);
+                underAttack = CheckAllPosBeingAttackedBy(node, ChessPiece.WHITE);
                 break;
             case CastlingRights.BLACK_QUEEN_SIDE: 
                 kingPos = 4; rookPos = 0; start = 2; finish = 4; 
-                underAttack = CheckAllPosBeingAttackedBy(ChessPiece.WHITE);
+                underAttack = CheckAllPosBeingAttackedBy(node, ChessPiece.WHITE);
                 break;
             default:    
                 return false;
         }
         
-        if(isPieceInPath(kingPos,rookPos)) return false;
+        if(isPieceInPath(node, kingPos,rookPos)) return false;
 
         for(int i=start; i<=finish; i++){
             if(underAttack.Contains(i)) return false;
         }
 
-        if (!gameManager.getCanCastle(side)) return false;
+        if (!node.getCanCastle(side)) return false;
 
         return true;
     }
-    bool isPieceInPath(int oriPos, int newPos) {
-        ChessPiece[] board = gameManager.getBoard();
+    bool isPieceInPath(ChessNode node, int oriPos, int newPos) {
+        ChessPiece[] board = node.board;
         // Board is an 8x8 chess board
         int oriRow = oriPos / 8;
         int oriCol = oriPos % 8;
@@ -196,11 +249,6 @@ public class MovesManager : MonoBehaviour
         int currentRow = oriRow + rowStep;
         int currentCol = oriCol + colStep;
         
-        // // DEBUG
-        // cout << "rs = " << rowStep << " cs = " << colStep << endl;
-        // // DEBUG
-
-
         // Iterate until we reach the target position
         while (currentRow != newRow || currentCol != newCol) {
             int currentPos = currentRow * 8 + currentCol;
@@ -217,9 +265,24 @@ public class MovesManager : MonoBehaviour
     }
 
     // Check valids moves related methods
-    List<int> CalculatePseudoValidMoves(int pos){
+    public List<int> getAllMovablePieces(ChessNode node, ChessPiece color){
+        ChessPiece[] board = node.board;
 
-        ChessPiece[] board = gameManager.getBoard();
+        List<int> allPieces = new List<int>();
+        for(int i=0; i<64; i++){
+            if(node.getColor(board[i])==color) allPieces.Add(i);
+        }
+
+        List<int> res = new List<int>();
+        foreach(int i in allPieces){            
+            if(GetLegalMoves(node, i).Count>0) res.Add(i);
+        }
+
+        return res;
+    } 
+    List<int> CalculatePseudoValidMoves(ChessNode node, int pos){
+
+        ChessPiece[] board = node.board;
 
         // Debug.Log("Calculating Pseudo Valid Moves");
         // Debug.Log("Pos = " + pos);
@@ -248,32 +311,32 @@ public class MovesManager : MonoBehaviour
                 if (color == ChessPiece.WHITE) {
                     // Forward moves
                     if(board[(row - 1) * 8 + col]==ChessPiece.EMPTY) {
-                        AddMove(row - 1, col, ref res, color);
+                        AddMove(node, row - 1, col, ref res, color);
                         if (row == 6 && board[(row - 2) * 8 + col]==ChessPiece.EMPTY) {
-                            AddMove(row - 2, col, ref res, color);
+                            AddMove(node, row - 2, col, ref res, color);
                         }
                     }
                     // Diagonal caputures
-                    if(isRowColValid(row - 1, col - 1)&&board[(row - 1) * 8 + col-1]!=ChessPiece.EMPTY) AddMove(row - 1, col - 1, ref res, color);
-                    if(isRowColValid(row - 1, col + 1)&&board[(row - 1) * 8 + col+1]!=ChessPiece.EMPTY) AddMove(row - 1, col + 1, ref res, color);
+                    if(isRowColValid(row - 1, col - 1)&&board[(row - 1) * 8 + col-1]!=ChessPiece.EMPTY) AddMove(node, row - 1, col - 1, ref res, color);
+                    if(isRowColValid(row - 1, col + 1)&&board[(row - 1) * 8 + col+1]!=ChessPiece.EMPTY) AddMove(node, row - 1, col + 1, ref res, color);
                     // If enpassant available
-                    if(isRowColValid(row - 1, col - 1)&&((row - 1) * 8 + col-1)==gameManager.getEnpassantTile()) AddMove(row - 1, col - 1, ref res, color);
-                    if(isRowColValid(row - 1, col + 1)&&((row - 1) * 8 + col+1)==gameManager.getEnpassantTile()) AddMove(row - 1, col + 1, ref res, color);
+                    if(isRowColValid(row - 1, col - 1)&&((row - 1) * 8 + col-1)==node.getEnpassantTile()) AddMove(node, row - 1, col - 1, ref res, color);
+                    if(isRowColValid(row - 1, col + 1)&&((row - 1) * 8 + col+1)==node.getEnpassantTile()) AddMove(node, row - 1, col + 1, ref res, color);
 
                 } else {
                     // Forward moves
                     if(board[(row + 1) * 8 + col]==ChessPiece.EMPTY){
-                        AddMove(row + 1, col, ref res, color);
+                        AddMove(node, row + 1, col, ref res, color);
                         if (row == 1 && board[(row + 2) * 8 + col]==ChessPiece.EMPTY) {
-                            AddMove(row + 2, col, ref res, color);
+                            AddMove(node, row + 2, col, ref res, color);
                         }
                     }
                     // Diagonal caputures
-                    if(isRowColValid(row + 1, col - 1)&&board[(row + 1) * 8 + col-1]!=ChessPiece.EMPTY) AddMove(row + 1, col - 1, ref res, color);
-                    if(isRowColValid(row + 1, col + 1)&&board[(row + 1) * 8 + col+1]!=ChessPiece.EMPTY) AddMove(row + 1, col + 1, ref res, color);
+                    if(isRowColValid(row + 1, col - 1)&&board[(row + 1) * 8 + col-1]!=ChessPiece.EMPTY) AddMove(node, row + 1, col - 1, ref res, color);
+                    if(isRowColValid(row + 1, col + 1)&&board[(row + 1) * 8 + col+1]!=ChessPiece.EMPTY) AddMove(node, row + 1, col + 1, ref res, color);
                     // If enpassant available
-                    if(isRowColValid(row + 1, col - 1)&&((row + 1) * 8 + col-1)==gameManager.getEnpassantTile()) AddMove(row + 1, col - 1, ref res, color);
-                    if(isRowColValid(row + 1, col + 1)&&((row + 1) * 8 + col+1)==gameManager.getEnpassantTile()) AddMove(row + 1, col + 1, ref res, color);
+                    if(isRowColValid(row + 1, col - 1)&&((row + 1) * 8 + col-1)==node.getEnpassantTile()) AddMove(node, row + 1, col - 1, ref res, color);
+                    if(isRowColValid(row + 1, col + 1)&&((row + 1) * 8 + col+1)==node.getEnpassantTile()) AddMove(node, row + 1, col + 1, ref res, color);
                 }
                 
                 break;
@@ -284,7 +347,7 @@ public class MovesManager : MonoBehaviour
                         int newCol = col + directions[i,1] * j;
                         if (isRowColValid(newRow, newCol)) {
                             int index = newRow * 8 + newCol;
-                            if(!AddMove(newRow, newCol, ref res, color)) break;
+                            if(!AddMove(node, newRow, newCol, ref res, color)) break;
                         } else {
                             break;
                         }
@@ -297,24 +360,33 @@ public class MovesManager : MonoBehaviour
                         if(Math.Abs(i)!=Math.Abs(j) && i!=0 && j!=0){
                             int newRow = row + i;
                             int newCol = col + j;
-                            AddMove(newRow, newCol, ref res, color);
+                            AddMove(node, newRow, newCol, ref res, color);
                         }
                     }
                 }
                 break;
             case ChessPiece.BISHOP:
+
+                // Debug.Log("Bishop found = " + pos);
+
                 for (int i = 4; i < 8; ++i) {
                     for (int j = 1; j < 8; ++j) {
                         int newRow = row + directions[i,0] * j;
                         int newCol = col + directions[i,1] * j;
                         if (isRowColValid(newRow, newCol)) {
                             int index = newRow * 8 + newCol;
-                            if(!AddMove(newRow, newCol, ref res, color)) break;
+                            if(!AddMove(node, newRow, newCol, ref res, color)) break;
                         } else {
                             break;
                         }
                     }
                 }
+
+                // string r = "";
+                // foreach (int i in res){
+                //     r+= i + ", ";
+                // }
+                // Debug.Log("Bishop res = " + r);
                 break;
             case ChessPiece.QUEEN:
                 for (int i = 0; i < 8; ++i) {
@@ -323,7 +395,7 @@ public class MovesManager : MonoBehaviour
                         int newCol = col + directions[i,1] * j;
                         if (isRowColValid(newRow, newCol)) {
                             int index = newRow * 8 + newCol;
-                            if(!AddMove(newRow, newCol,ref res, color)) break;
+                            if(!AddMove(node, newRow, newCol,ref res, color)) break;
                         } else {
                             break;
                         }
@@ -334,17 +406,17 @@ public class MovesManager : MonoBehaviour
                 for (int i = 0; i < 8; ++i) {
                     int newRow = row + directions[i,0];
                     int newCol = col + directions[i,1];
-                    AddMove(newRow, newCol, ref res, color);
+                    AddMove(node, newRow, newCol, ref res, color);
                 }
 
-                if(!isInCheck(color)){
+                if(!isInCheck(node, color)){
                     // Castling
                     if(color==ChessPiece.WHITE){
-                        if(canKingCastle(CastlingRights.WHITE_KING_SIDE)) AddMove(row, col+2, ref res, color);
-                        if(canKingCastle(CastlingRights.WHITE_QUEEN_SIDE)) AddMove(row, col-2, ref res, color);
+                        if(canKingCastle(node, CastlingRights.WHITE_KING_SIDE)) AddMove(node, row, col+2, ref res, color);
+                        if(canKingCastle(node, CastlingRights.WHITE_QUEEN_SIDE)) AddMove(node, row, col-2, ref res, color);
                     } else {
-                        if(canKingCastle(CastlingRights.BLACK_KING_SIDE)) AddMove(row, col+2, ref res, color);
-                        if(canKingCastle(CastlingRights.BLACK_QUEEN_SIDE)) AddMove(row, col-2, ref res, color);
+                        if(canKingCastle(node, CastlingRights.BLACK_KING_SIDE)) AddMove(node, row, col+2, ref res, color);
+                        if(canKingCastle(node, CastlingRights.BLACK_QUEEN_SIDE)) AddMove(node, row, col-2, ref res, color);
                     }
                     
                 }                
@@ -354,29 +426,32 @@ public class MovesManager : MonoBehaviour
         }
         return res;
     }
-    HashSet<int> CheckAllPosBeingAttackedBy(ChessPiece color){
-        
+
+    HashSet<int> CheckAllPosBeingAttackedBy(ChessNode node, ChessPiece color){
+        // Debug.Log("Checking " + color + " Attacks");
         List<int> res = new List<int>();
 
-        ChessPiece[] board = gameManager.getBoard();
+        ChessPiece[] board = node.board;
+
+        // gameManager._displayBoard(node);
 
         // Iterate through all squares on the board
         for (int i = 0; i < 64; ++i) {
 
             // If the square contains a piece of the specified color
-            if (gameManager.getPiece(board[i]) != ChessPiece.EMPTY && gameManager.getColor(board[i]) == color) {
-                ChessPiece piece = gameManager.getPiece(board[i]);
+            if (node.getPiece(board[i]) != ChessPiece.EMPTY && node.getColor(board[i]) == color) {
+                ChessPiece piece = node.getPiece(board[i]);
                 int row = i / 8;
                 int col = i % 8;
                 switch (piece) {
                     // Pawn attacks
                     case ChessPiece.PAWN:
                         if (color == ChessPiece.WHITE) {
-                            if (isRowColValid(row - 1, col - 1)) AddMove(row - 1, col - 1, ref res, color);
-                            if (isRowColValid(row - 1, col + 1)) AddMove(row - 1, col + 1, ref res, color);
+                            if (isRowColValid(row - 1, col - 1)) AddMove(node, row - 1, col - 1, ref res, color);
+                            if (isRowColValid(row - 1, col + 1)) AddMove(node, row - 1, col + 1, ref res, color);
                         } else {
-                            if (isRowColValid(row + 1, col - 1)) AddMove(row + 1, col - 1, ref res, color);
-                            if (isRowColValid(row + 1, col + 1)) AddMove(row + 1, col + 1, ref res, color);
+                            if (isRowColValid(row + 1, col - 1)) AddMove(node, row + 1, col - 1, ref res, color);
+                            if (isRowColValid(row + 1, col + 1)) AddMove(node, row + 1, col + 1, ref res, color);
                         }
                         break;
                     // Other pieces use checkValidMoves
@@ -389,11 +464,11 @@ public class MovesManager : MonoBehaviour
                         for (int direction = 0; direction < 8; direction++) {
                             int newRow = row + directions[direction,0];
                             int newCol = col + directions[direction,1];
-                            AddMove(newRow, newCol, ref res, color);
+                            AddMove(node, newRow, newCol, ref res, color);
                         }
                         break;
                     default:
-                        List<int> moves = CalculatePseudoValidMoves(i);
+                        List<int> moves = CalculatePseudoValidMoves(node, i);
                         foreach(int move in moves) res.Add(move);
                         break;
                 }
@@ -403,14 +478,16 @@ public class MovesManager : MonoBehaviour
         HashSet<int> result = new HashSet<int>(res);
         return result;
     }
-    List<int> FilterValidMoves(int pos, List<int> valids){
+
+    List<int> FilterValidMoves(ChessNode node, int pos, List<int> valids){
         List<int> filtered = new List<int>();
         foreach(int i in valids){
-            if(!isInCheckAfterMoving(pos,i)) filtered.Add(i);
+            if(!isInCheckAfterMoving(node, pos, i)) filtered.Add(i);
         }
         return filtered;
     }
-    int NumOfValidMoves(ChessPiece colorToCheck){
+
+    int NumOfValidMoves(ChessNode node, ChessPiece colorToCheck){
         int count = 0;  
 
         ChessPiece[] board = gameManager.getBoard();
@@ -421,8 +498,8 @@ public class MovesManager : MonoBehaviour
             if(color == colorToCheck){
 
                 // Calculate valid moves
-                List<int> validPositions = CalculatePseudoValidMoves(i);
-                List<int> filteredValidPositions = FilterValidMoves(i, validPositions);
+                List<int> validPositions = CalculatePseudoValidMoves(node, i);
+                List<int> filteredValidPositions = FilterValidMoves(node, i, validPositions);
                 
                 count+=filteredValidPositions.Count;
             }
@@ -430,78 +507,331 @@ public class MovesManager : MonoBehaviour
 
         return count;
     }
-    public List<int> GetLegalMoves(int pos){
-        List<int> validPositions = CalculatePseudoValidMoves(pos);
-        List<int> filteredValidPositions = FilterValidMoves(pos, validPositions);
+    public List<int> GetLegalMoves(ChessNode node, int pos){
+        // gameManager._toStringBoard(node);
+
+        List<int> validPositions = CalculatePseudoValidMoves(node, pos);
+        
+        // string res = "POS = " + pos + "\nvalidPositions = ";
+        // foreach(int i in validPositions){
+        //     res+=(i + ", ");
+        // }
+
+        List<int> filteredValidPositions = FilterValidMoves(node, pos, validPositions);
+
+        // res+="\nfilteredValidPositions = ";
+        // foreach(int i in filteredValidPositions){
+        //     res+=(i + ", ");
+        // }
+
+        // if(pos == 33) Debug.Log(res);
+
         return filteredValidPositions;
     }
 
     // Check/Checkmate related methods
-    bool isInCheck(ChessPiece color){
+    bool isInCheck(ChessNode node, ChessPiece color){
+        
+        // // Debug
+        // Debug.Log("In is in check!");
+        // gameManager._displayBoard(node);
+        // // Debug
+
         ChessPiece enemyColor = ChessPiece.WHITE;
         if(color == ChessPiece.WHITE) enemyColor = ChessPiece.BLACK;
 
-        HashSet<int> enemyAttacks = CheckAllPosBeingAttackedBy(enemyColor);
-        ChessPiece[] board = gameManager.getBoard();
+        // // Debug
+        // Debug.Log("Color to check = " + enemyColor);
+        // // Debug
+
+        HashSet<int> enemyAttacks = CheckAllPosBeingAttackedBy(node, enemyColor);
+
+        ChessPiece[] board = node.board;
+
+        // // Debug
+        // Debug.Log("Check the table:"); 
+        // gameManager._displayBoard(node);
+        // string enemyA = "Enemy attacks: ";
+        // foreach(int i in enemyAttacks){
+        //     enemyA += (i + ", ");
+        // }
+        // Debug.Log(enemyA); 
+        // // Debug
+
         foreach(int i in enemyAttacks){
-            if(gameManager.getColor(board[i])==color && gameManager.getPiece(board[i])==ChessPiece.KING){
+            if(node.getColor(board[i])==color && node.getPiece(board[i])==ChessPiece.KING){
                 return true;
             }
         }
 
         return false;
     }
-    bool isInCheckAfterMoving(int ori, int pos){
-        ChessPiece[] board = gameManager.getBoard();
+    bool isInCheckAfterMoving(ChessNode node, int ori, int pos){
+        // bool inCheck = true;
 
-        ChessPiece oriPiece, posPiece; 
+        // if(ori == 33 && pos ==26 ){}
+        // Debug.Log("Entering isInCheckAfterMoving");
+        
+        ChessPiece[] board = node.board;
+
+        ChessPiece oriPiece, posPiece, tempPiece = ChessPiece.EMPTY; 
+        
         oriPiece = board[ori];
         posPiece = board[pos];
-        
+
         ChessPiece color = gameManager.getColor(board[ori]);
         ChessPiece piece = gameManager.getPiece(board[ori]);
 
-        board[pos] = board[ori];
-        board[ori] = ChessPiece.EMPTY;
+        if(piece == ChessPiece.PAWN && pos == node.enPassantTile){
+            
+            board[pos] = board[ori];
+            board[ori] = ChessPiece.EMPTY;
+            tempPiece = board[node.enPassantPawnPosition];
+            board[node.enPassantPawnPosition] = ChessPiece.EMPTY;
+            
+        } else {
+            board[pos] = board[ori];
+            board[ori] = ChessPiece.EMPTY;
+        }
         
-        if(isInCheck(color)){
+        bool inCheck = isInCheck(node, color);
+
+        if(piece == ChessPiece.PAWN && pos == node.enPassantTile){
             board[pos] = posPiece;
             board[ori] = oriPiece;
-            return true;
+            board[node.enPassantPawnPosition] = tempPiece;
+        } else {
+            board[pos] = posPiece;
+            board[ori] = oriPiece;
         }
 
-        board[pos] = posPiece;
-        board[ori] = oriPiece;  
+    
+        // if(ori == 33 && pos ==26) {
+        //     Debug.Log(inCheck);
+        //     gameManager._displayBoard(node);
+        // }
+
+        // debugRes+= inCheck;
+        // if(ori == 33 && pos == 26){
+        //     Debug.Log(debugRes);
+        // }
+
+        // Debug.Log("Incheck = " + inCheck + " ori pos = " + ori + ", " + pos);
+        
+
+        if(inCheck){
+            return true;
+        }  
         return false;
     }
-    public void CheckForCheckMate(){
+    public void CheckForCheckMate(ChessNode node){
         // Checks for checkmate/stalemate
-        int validMovesW = NumOfValidMoves(ChessPiece.WHITE);
-        int validMovesB = NumOfValidMoves(ChessPiece.BLACK);
+        int validMovesW = NumOfValidMoves(node, ChessPiece.WHITE);
+        int validMovesB = NumOfValidMoves(node, ChessPiece.BLACK);
 
-        Debug.Log("Turn = " + gameManager.getTurn());
+        //Debug.Log("Turn = " + node.getTurn());
 
-        if(validMovesW==0&&gameManager.getTurn()==ChessPiece.WHITE) {
-            uIManager.displayResult(isInCheck(ChessPiece.WHITE),false);
-            gameManager.isGameEnd = true;
+        if(validMovesW==0&&node.getTurn()==ChessPiece.WHITE) {
+            uIManager.displayResult(isInCheck(node, ChessPiece.WHITE),false);
+            node.isGameEnd = true;
         }
 
-        if(validMovesB==0&&gameManager.getTurn()==ChessPiece.BLACK) {
-            uIManager.displayResult(isInCheck(ChessPiece.BLACK),true);
-            gameManager.isGameEnd = true;
+        if(validMovesB==0&&node.getTurn()==ChessPiece.BLACK) {
+            uIManager.displayResult(isInCheck(node, ChessPiece.BLACK),true);
+            node.isGameEnd = true;
         }
 
-        if((gameManager.getHalfMoveCount() - Math.Min(gameManager.getLastCapturedTurn(), gameManager.getLastPawnMovedTurn()) == 100)) {
+        if((node.getHalfMoveCount() - Math.Min(node.getLastCapturedTurn(), node.getLastPawnMovedTurn()) == 100)) {
             uIManager.displayResult(false,false);
-            gameManager.isGameEnd = true;
+            node.isGameEnd = true;
         }
+    }
+
+    public bool isCheckMate(ChessNode node, ChessPiece color){
+        int validMovesW = NumOfValidMoves(node, ChessPiece.WHITE);
+        int validMovesB = NumOfValidMoves(node, ChessPiece.BLACK);
+
+        if(validMovesW==0&&node.getTurn()==ChessPiece.WHITE) return true;
+        if(validMovesB==0&&node.getTurn()==ChessPiece.BLACK) return true;
+
+        return false;
     }
 
     // Moving piece related methods
-    bool AddMove(int r, int c, ref List<int> positions, ChessPiece color){
+    public ChessNode MoveNodePiece(ChessNode node, int oriPos, int newPos, int pawnOption = 0){
+        ChessNode oldNode = new ChessNode(node);
+        ChessPiece[] board = node.board;
+        ChessPiece piece = node.getPiece(board[oriPos]);
+        ChessPiece color = node.getColor(board[oriPos]);
+        // If target position is empty, move to empty space
+        
+        if(board[newPos] == ChessPiece.EMPTY){
+            // All pawn logics, including promotion, enpassant, move 2, move 1
+            if(piece == ChessPiece.PAWN){
+                // If it's pawn and reached last row, promote piece
+                if((newPos >=0 && newPos <8) || (newPos >=56 && newPos <64)){
+                    
+                    board[newPos] = PawnPromotion(node, color, pawnOption); // PROMOTION - Need to separate this for it's own function
+                    board[oriPos] = ChessPiece.EMPTY;
+                    
+                    node.enPassantTile = -1;
+                    node.enPassantPawnPosition = -1;
+                    node.halfMoveCount++;
+                    
+                    node.lastPawnMovedTurn = node.halfMoveCount;
+                    node.changeTurn();
+                    return oldNode;
+                }
+
+                // If it's pawn and attack sqaure can be enpassant
+                if(newPos == node.enPassantTile){
+                    board[newPos] = board[oriPos];
+                    board[oriPos] = 0;
+                    CapturePiece(node, node.enPassantPawnPosition);
+                    node.enPassantTile = -1;
+                    node.enPassantPawnPosition = -1;
+                    node.halfMoveCount++;
+
+                    node.lastPawnMovedTurn = node.halfMoveCount;
+                    node.changeTurn();
+                    return oldNode;
+                }
+
+                // If it's pawn and moved 2 squares mark enpassant info
+                if(Math.Abs(newPos-oriPos)==16){
+                    board[newPos] = board[oriPos];
+                    board[oriPos] = ChessPiece.EMPTY;
+                    node.enPassantTile = (oriPos+newPos)/2;
+                    node.enPassantPawnPosition = newPos;
+                    node.halfMoveCount++;
+
+                    node.lastPawnMovedTurn = node.halfMoveCount;
+                    node.changeTurn();
+                    return oldNode;
+                }
+
+                // If it's pawn and moved 1 square
+                board[newPos] = board[oriPos];
+                board[oriPos] = 0;
+                node.enPassantTile = -1;
+                node.enPassantPawnPosition = -1;
+                node.halfMoveCount++;
+
+                node.lastPawnMovedTurn = node.halfMoveCount;
+                node.changeTurn();
+                return oldNode;
+            } 
+
+            // Castle move logic
+            if(piece == ChessPiece.KING && (Math.Abs(newPos-oriPos)==2)){
+                if((newPos-oriPos)==-2){ // Queen Side Castle
+                    board[oriPos-1]=board[oriPos-4];
+                    board[oriPos-4]=0;
+                } else { // King Side Castle
+                    board[oriPos+1]=board[oriPos+3];
+                    board[oriPos+3]=0;
+                }
+            }
+
+            // If king moves, remove all castle availability
+            if(piece == ChessPiece.KING){ //&& !testingMode
+                if(color==ChessPiece.WHITE){
+                    node.canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
+                    node.canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
+                } else {
+                    node.canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
+                    node.canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
+                }
+            }
+
+            // If rook moves, remove the castle availability of that side
+            if(piece == ChessPiece.ROOK){ //&& !testingMode
+                if(color==ChessPiece.WHITE){
+                    if(oriPos == 56) node.canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
+                    if(oriPos == 63) node.canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
+                } else {
+                    if(oriPos == 0) node.canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
+                    if(oriPos == 7) node.canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
+                }
+            }
+
+            // All other piece when moving to empty square
+            board[newPos] = board[oriPos];
+            board[oriPos] = 0;
+            node.enPassantTile = -1;
+            node.enPassantPawnPosition = -1;
+            node.halfMoveCount++;
+            node.changeTurn();
+            return oldNode;
+        }  
+
+        // Promotion and capture
+        if((piece == ChessPiece.PAWN) && ((newPos >=0 && newPos <8) || (newPos >=56 && newPos <64))) {
+            CapturePiece(node, newPos);
+            board[newPos] = PawnPromotion(node, color, pawnOption); // PROMOTION - Need to separate this for it's own function
+            board[oriPos] = ChessPiece.EMPTY;
+            node.lastPawnMovedTurn = node.halfMoveCount+1;
+
+        } else{
+            // All other standard capture
+            // If there is a piece on the target position, capture enemy piece
+            CapturePiece(node, newPos); //capturedPieces.push_back(board[newPos]);
+            board[newPos] = board[oriPos];
+            board[oriPos] = 0;
+        }
+
+        node.enPassantTile = -1;
+        node.enPassantPawnPosition = -1;
+        node.halfMoveCount++;
+        node.changeTurn();
+        return oldNode;
+    }
+    public ChessPiece PawnPromotion(ChessNode node, ChessPiece color, int option){
+        ChessPiece res = new ChessPiece();
+        switch(option){
+            case 0: 
+                res = color | ChessPiece.QUEEN;
+                break;
+            case 1: 
+                res = color | ChessPiece.ROOK;
+                break;
+            case 2: 
+                res = color | ChessPiece.KNIGHT;
+                break;
+            default: 
+                res = color | ChessPiece.BISHOP;
+                break;
+        }
+        return res;
+
+    }
+    public void CapturePiece(ChessNode node, int newPos){
+        if(node.getPiece(node.board[newPos]) == ChessPiece.ROOK){
+            switch(newPos){
+                case 0:
+                    node.canCastle[(int)CastlingRights.BLACK_QUEEN_SIDE] = false;
+                    break;
+                case 7:
+                    node.canCastle[(int)CastlingRights.BLACK_KING_SIDE] = false;
+                    break;
+                case 56:
+                    node.canCastle[(int)CastlingRights.WHITE_QUEEN_SIDE] = false;
+                    break;
+                case 63:
+                    node.canCastle[(int)CastlingRights.WHITE_KING_SIDE] = false;
+                    break;
+                default: break;
+            }
+        }
+        node.capturedPieces.Add(node.board[newPos]);
+        node.board[newPos] = ChessPiece.EMPTY;
+
+        node.lastCapturedTurn = node.halfMoveCount;
+    } 
+    bool AddMove(ChessNode node, int r, int c, ref List<int> positions, ChessPiece color){
         if(isRowColValid(r,c)){
             int pos = r*8 + c;
-            ChessPiece piece = gameManager.getBoard()[pos];
+            ChessPiece piece = node.board[pos];
             if(piece==ChessPiece.EMPTY || gameManager.getColor(piece)!=color) {
                 positions.Add(pos);
                 return piece == ChessPiece.EMPTY;
@@ -512,58 +842,126 @@ public class MovesManager : MonoBehaviour
     bool isRowColValid(int r, int c){
         return r>=0 && r<8 && c>=0 && c<8;
     }
-    public void MovePiece(int oriPos, int newPos){
-        ChessPiece oriPiece = gameManager.getBoard()[oriPos];
+    public void MovePiece(ChessNode node, int oriPos, int newPos, int pawnOption = -1){
+        ChessPiece oriPiece = node.board[oriPos];
         
-        // Move to empty tile
-        if(gameManager.getBoard()[newPos]!=ChessPiece.EMPTY) {
-            // gameManager.CapturePiece(pos);
-            displayManager.CapturePiece(newPos);
+        if(pawnOption!=-1){
+            gameManager.AddToMoveHistory(MoveNodePiece(node, oriPos, newPos, pawnOption));
+        } else {
+            gameManager.AddToMoveHistory(MoveNodePiece(node, oriPos, newPos));
         }
 
-        // Pawn Logics
-        if(gameManager.getPiece(oriPiece)==ChessPiece.PAWN){
-
-            if(newPos == gameManager.getEnpassantTile()){
-                // Debug.Log("Pos = " + gameManager.getEnpassantPawnPosition());
-                displayManager.CapturePiece(gameManager.getEnpassantPawnPosition());
-            }
-
-            // Pawn Promotion
-            if((newPos>=0&&newPos<8)||(newPos>=56&&newPos<64)){
-                displayManager.PawnPromotion(oriPos);
-            }
+        uIManager.displayGameInfo();
+        displayManager.UpdateDisplay();
+    }
+    public void UndoLastMove(){
+        if(gameManager.currGame.halfMoveCount < 1) return;
+        else if(gameManager.currGame.halfMoveCount == 1) {
+            gameManager.UndoLastHalfMove();
+        } else {
+            gameManager.UndoLastFullMove();
         }
-
-        // Castling
-        if(gameManager.getPiece(oriPiece)==ChessPiece.KING){
-            if(Math.Abs(newPos-oriPos)==2){
-                displayManager.Castling(oriPos, newPos);
-            }
-        }
-
-        gameManager.MovePiece(oriPos, newPos);
-        displayManager.MovePiece(oriPos, newPos);
-
-        //gameManager._displayBoard();
+        
+        uIManager.displayGameInfo();
+        displayManager.UpdateDisplay();
     }
 
     // Resets if Didn't click on the right piece/tile
     void ResetThisTurn(){
         if(selected!=-1){ 
             selected = -1;
+            movingTo = -1;
             validTiles.Clear();
         } 
         displayManager.ResetAllTileColor();
     }
 
-
     // Perft related
-    void Perft(int depth){
-        int count = 0;
+    public void Perft(ChessNode node, int depth){
+        Queue<ChessNode> nodeQueue = new Queue<ChessNode>();
+        ChessNode dupNode = new ChessNode(node);
+        nodeQueue.Enqueue(dupNode);
 
-        ChessNode curr = gameManager.toNode();
+        for(int i=0; i<depth; i++){
+            // WriteDataToFile("Depth = " + i + "\n");
 
-        Debug.Log(count + " nodes found! Depth = " + depth);
+            // Time measurement
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+
+            // int count = 0;
+            Queue<ChessNode> childrenNodeQueue = new Queue<ChessNode>();
+
+            // BFS
+            while(nodeQueue.Count!=0){
+                ChessNode currNode = nodeQueue.Dequeue();
+                List<int> allPos = getAllMovablePieces(currNode, currNode.getTurn());
+                foreach(int pos in allPos){
+                    // WriteDataToFile("NODE STEMMING FROM " + pos + "\n");
+                    // WriteDataToFile(gameManager._toStringBoard(currNode));
+                    // int nodeRes =  0;
+                    List<int> LegalMoves = GetLegalMoves(currNode, pos);
+                    // count+=LegalMoves.Count;
+                    foreach(int move in LegalMoves){
+                        //If dealing with pawn promotion
+                        // WriteDataToFile("Ori = " + pos + " New = " + move);
+                        
+                        if((gameManager.getPiece(currNode.board[pos])==ChessPiece.PAWN)&&((move>=0&&move<8)||(move>=56&&move<64))){
+                            for(int option=0; option<4; option++){
+                                ChessNode newNode = new ChessNode(currNode);
+                                MoveNodePiece(newNode, pos, move, option);
+                                childrenNodeQueue.Enqueue(newNode);
+                                // nodeRes++;
+                                // WriteDataToFile(gameManager._toStringBoard(newNode));
+                            }
+                        } else{
+                            ChessNode newNode = new ChessNode(currNode);
+                            MoveNodePiece(newNode, pos, move);
+                            childrenNodeQueue.Enqueue(newNode);
+                            // nodeRes++;
+                            // WriteDataToFile(gameManager._toStringBoard(newNode));
+                        }
+                    }
+
+                    // WriteDataToFile("Node count for pos " + pos + " = " + nodeRes + "\n\n");
+                    // Debug.Log("Node pos = " + pos + ": " + nodeRes);
+                }
+            }
+            
+            while(childrenNodeQueue.Count!=0){
+                nodeQueue.Enqueue(childrenNodeQueue.Dequeue());
+            }
+
+            stopwatch.Stop();
+            // UnityEngine.Debug.Log(count + " positions found! Depth = " + i);
+            System.TimeSpan ts = stopwatch.Elapsed;
+            // Format and display the elapsed time
+            string elapsedTime = string.Format("{0:00}:{1:00}:{2:00}.{3:00}",
+                ts.Hours, ts.Minutes, ts.Seconds,
+                ts.Milliseconds / 10);
+            UnityEngine.Debug.Log("RunTime " + elapsedTime);
+
+            UnityEngine.Debug.Log(nodeQueue.Count + " nodes found! Depth = " + i);
+            // WriteDataToFile((count + " positions found! Depth = " + i));
+        } 
     }
+
+    // Debug methods
+    // public void WriteDataToFile(string data, string directory = "", string fileName = "perft_results.txt") {
+    //     // Combine the directory and file name to get the full path
+    //     string path = Path.Combine(directory, fileName);
+
+    //     // Ensure the directory exists
+    //     if (!Directory.Exists(directory)) {
+    //         Directory.CreateDirectory(directory);
+    //     }
+
+    //     // Write data to the file
+    //     //File.WriteAllText(path, data);
+    //     File.AppendAllText(path, data + "\n");
+
+    //     // Optionally, log the path to debug
+    //     // Debug.Log($"Data written to: {path}");
+    // }
+
 }

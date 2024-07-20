@@ -5,26 +5,16 @@ using UnityEngine.UI;
 
 public class UIManager : MonoBehaviour
 {
-    
+    public int perftLevel = 1;
     public Text turn;
     public Text win;
     public Button reset;
     public Button undo;
+    public Button perft;
     public DisplayManager displayManager;
     public GameManager gameManager;
     public MovesManager movesManager;
-
     public Toggle isBot1, isBot2;
-
-    /*
-    public Text blackCaptured;
-    public Text WhiteCaptured;
-    public Text moveRecord;
-
-    public Button undo;
-    public Button save;
-    public Button load;
-    */
 
     // Start is called before the first frame update
     void Start()
@@ -38,6 +28,7 @@ public class UIManager : MonoBehaviour
 
         reset.onClick.AddListener(OnResetButtonPress);
         undo.onClick.AddListener(OnUndoButtonPress);
+        perft.onClick.AddListener(OnPerftButtonPress);
     }
 
     // Update is called once per frame
@@ -45,6 +36,7 @@ public class UIManager : MonoBehaviour
     {
         
     }
+    
     void OnToggle1ValueChanged(bool isOn)
     {
         movesManager.isBot1 = isOn;
@@ -57,24 +49,27 @@ public class UIManager : MonoBehaviour
 
     void OnResetButtonPress(){
         gameManager.ResetGame();
-        displayManager.ResetGame();
+        displayManager.UpdateDisplay();
         win.text = "";
         displayGameInfo();
     }
 
     void OnUndoButtonPress()
     {
-        Debug.Log("Undo Clicked!");
-        // gameManager.UndoMove();
-        // displayManager.UndoMove();
-        // displayGameInfo();
+        // Debug.Log("Undo Clicked!");
+        movesManager.UndoLastMove();
+        win.text = "";
+    }
+    void OnPerftButtonPress()
+    {
+        movesManager.Perft(gameManager.currGame, perftLevel);
     }
 
     public void displayGameInfo(){
         turn.text = 
-        "Turn: " + ((gameManager.getTurn()==ChessPiece.WHITE) ? "WHITE" : "BLACK")
+        "Turn: " + ((gameManager.currGame.getTurn()==ChessPiece.WHITE) ? "WHITE" : "BLACK")
         + "\n" +
-        "Half move count = " + gameManager.getHalfMoveCount()
+        "Half move count = " + gameManager.currGame.getHalfMoveCount()
         ;
     }
 

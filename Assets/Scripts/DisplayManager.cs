@@ -7,14 +7,14 @@ public class DisplayManager : MonoBehaviour
 {   
     public GameManager gameManager;
     // Prefabs
-    public GameObject tilePrefab, piecePrefab;
+    public GameObject tilePrefab, piecePrefab, promotionOptions;
     public Sprite pawnWhite, rookWhite, knightWhite, bishopWhite, queenWhite, kingWhite;
     public Sprite pawnBlack, rookBlack, knightBlack, bishopBlack, queenBlack, kingBlack;
 
     // Board related
     List<GameObject> tiles = new List<GameObject>();
     List<GameObject> pieces = new List<GameObject>();
-    //List<GameObject> capturedPieces = new List<GameObject>();
+    // List<GameObject> capturedPieces = new List<GameObject>();
 
     // Camera/display related
     public Transform mainCameraTransform;
@@ -35,7 +35,6 @@ public class DisplayManager : MonoBehaviour
     {   
         InitializeBoard();
     }
-
     // Update is called once per frame
     void Update()
     {
@@ -43,15 +42,15 @@ public class DisplayManager : MonoBehaviour
         if (screenWidth != Screen.width || screenHeight != Screen.height) DisplayDimensionChange();
     }
 
-    public void ResetGame(){
+    public void UpdateDisplay(){
+        ClearBoard();
+        InitializePieces();
+    }
+    public void ClearBoard(){
         foreach(GameObject piece in pieces){
             Destroy(piece);
         }
         pieces.Clear();
-
-        Debug.Log(pieces.Count);
-        
-        InitializePieces();
     }
     void InitializeBoard(){
         ChessPiece[] board = gameManager.getBoard();
@@ -61,8 +60,6 @@ public class DisplayManager : MonoBehaviour
         InitializeTiles();
         InitializePieces();
     }
-
-    // Board Display
     float CalculateTileSize()
     {
         float screenWidth = Screen.width-padding;
@@ -116,7 +113,7 @@ public class DisplayManager : MonoBehaviour
 
         mainCameraTransform.position = new Vector3(0, 0, -10); // Ensure camera is centered on the board
     }
-    void InitializePieces(){
+    public void InitializePieces(){
         ChessPiece[] board = gameManager.getBoard();
         Vector3 offset = new Vector3(0,0,-1);
         float pieceSize = CalculateTileSize()*pieceSizeScaler;
@@ -197,14 +194,21 @@ public class DisplayManager : MonoBehaviour
             // Update the piece position based on its corresponding tile
             piece.transform.position = tiles[i].transform.position + offset;
         }
-        
-        
+
+        promotionOptions.transform.localScale = new Vector3(size, size, 1);
     }
     void DisplayDimensionChange(){
         screenWidth = Screen.width;
         screenHeight = Screen.height;
         tileSize = CalculateTileSize();
         AdjustTilesAndPiecesToScreenRatio(tileSize);
+    }
+    public void PromotingPawn(int pos){
+        promotionOptions.SetActive(true);
+        promotionOptions.transform.position = getTile(pos).transform.position+new Vector3(0,0,-4);
+    }
+    public void DoneWithPawnPromotion(){
+        promotionOptions.SetActive(false);
     }
 
     // For Moves Manager
@@ -217,14 +221,6 @@ public class DisplayManager : MonoBehaviour
     public GameObject getTile(int pos){
         return tiles[pos];
     }
-
-    // Only moves the front end!
-    public void MovePiece(int oriPos, int newPos){
-        pieces[newPos] = pieces[oriPos];
-        pieces[oriPos] = null;
-        pieces[newPos].transform.position = new Vector3(tiles[newPos].transform.position.x, tiles[newPos].transform.position.y, pieces[newPos].transform.position.z);
-    }
-
     public void HighlightTile(int pos){
         GameObject tile = tiles[pos];
         SpriteRenderer sr = tile.GetComponent<SpriteRenderer>();
@@ -232,7 +228,6 @@ public class DisplayManager : MonoBehaviour
 
         highlightedTiles.Add(pos);
     }
-
     public void ResetTileColor(int pos){
         GameObject tile = tiles[pos];
         int r = pos/8;
@@ -261,34 +256,52 @@ public class DisplayManager : MonoBehaviour
         highlightedTiles.Clear();
     }
 
-    public void CapturePiece(int newPos){
-        Destroy(pieces[newPos]);
-    }
-    public void PawnPromotion(int pos){
-        SpriteRenderer sr = pieces[pos].GetComponent<SpriteRenderer>();
-        sr.sprite = (gameManager.getBoard()[pos] & ChessPiece.BLACK) != 0 ? queenBlack : queenWhite;
-    }
-    public void Castling(int oriPos, int newPos){
-        int rookPos, targetPos;
-        // Debug.Log(oriPos + ", " + newPos);
 
-        if(oriPos==4){ // Black
-            if(newPos==2){
-                targetPos = 3; rookPos = 0;
-            } else {
-                targetPos = 5; rookPos = 7;
-            }
-        } else { // White
-            if(newPos==58){
-                targetPos = 59; rookPos = 56;
-            } else {
-                targetPos = 61; rookPos = 63;     
-            }
-        }
-        MovePiece(rookPos, targetPos);
+    // public void MovePiece(int oriPos, int newPos){
+    //     pieces[newPos] = pieces[oriPos];
+    //     pieces[oriPos] = null;
+    //     pieces[newPos].transform.position = new Vector3(tiles[newPos].transform.position.x, tiles[newPos].transform.position.y, pieces[newPos].transform.position.z);
+    // }
+    // public void CapturePiece(int newPos){
+    //     Destroy(pieces[newPos]);
+    // }
+    // public void PawnPromotion(int pos, int option){
+    //     SpriteRenderer sr = pieces[pos].GetComponent<SpriteRenderer>();
+        
+    //     switch(option){
+    //         case 0:
+    //             sr.sprite = (gameManager.getBoard()[pos] & ChessPiece.BLACK) != 0 ? queenBlack : queenWhite;
+    //             break;
+    //         case 1:
+    //             sr.sprite = (gameManager.getBoard()[pos] & ChessPiece.BLACK) != 0 ? knightBlack : knightWhite;
+    //             break;
+    //         case 2:
+    //             sr.sprite = (gameManager.getBoard()[pos] & ChessPiece.BLACK) != 0 ? rookBlack : rookWhite;
+    //             break;
+    //         default:
+    //             sr.sprite = (gameManager.getBoard()[pos] & ChessPiece.BLACK) != 0 ? bishopBlack : bishopWhite;
+    //             break;
+    //     }
+    // }
+    // public void Castling(int oriPos, int newPos){
+    //     int rookPos, targetPos;
+    //     // Debug.Log(oriPos + ", " + newPos);
 
-
-    }
+    //     if(oriPos==4){ // Black
+    //         if(newPos==2){
+    //             targetPos = 3; rookPos = 0;
+    //         } else {
+    //             targetPos = 5; rookPos = 7;
+    //         }
+    //     } else { // White
+    //         if(newPos==58){
+    //             targetPos = 59; rookPos = 56;
+    //         } else {
+    //             targetPos = 61; rookPos = 63;     
+    //         }
+    //     }
+    //     MovePiece(rookPos, targetPos);
+    // }
 
 }
 
