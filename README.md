@@ -41,15 +41,15 @@ The app's tile size, piece size and font size are dynamically adjusted to the di
 
 - Desktop display
 
-![Game ScreenShot Desktop App](imgs\Desktop.JPG)
+![Game ScreenShot Desktop App](imgs\Desktop.JPG?raw=true)
 
 - Tablet screen
 
-![Game ScreenShot Table App](imgs\Ipad.JPG)
+![Game ScreenShot Table App](imgs\Ipad.JPG?raw=true)
 
 - Phone screen
 
-![Game ScreenShot Phone App](imgs\iphone.JPG)
+![Game ScreenShot Phone App](imgs\iphone.JPG?raw=true)
 
 ### Board and Pieces
 The chessboard is represented with a size 64 array and pieces are represented with bits. 
@@ -86,11 +86,11 @@ Once player has no valid moves, the game will display either stalemate or checkm
 
 The following is a flowchart outlines the user interaction with the app:
 
-![User interaction Flow Chart](imgs\chessFlowChart.jpg)
+![User interaction Flow Chart](imgs\chessFlowChart.jpg?raw=true)
 
 The following illustrate the flow of how we determine which tile to highlight after clicking the piece:
 
-![Piece to highlight Flow Chart](imgs\highlightTiles.JPG)
+![Piece to highlight Flow Chart](imgs\highlightTiles.JPG?raw=true)
 
 ## Testing and Debugging
 Several bugs were caught during testing by comparing performance test result to the correct results at different depth. (I got the reference correct results here: https://www.chessprogramming.org/Perft_Results) 
@@ -163,7 +163,7 @@ Several issues with the current chess bot implementation:
 - Early game with repeated, predictable moves. This is due to all of the nodes would return a same value. So the search method would only set to the first move that yielded the same value.
 - Will wait to take a piece until have to. This is still due to the same value returned on all node. 
 
-![Bug1](imgs\bug.JPG)
+![Bug1](imgs\bug.JPG?raw=true)
 
 In here you can see that white is controlled by bot. The reasonable move would be capturing the pawn next move. However if I move the king 1 tile down, the rook would move 1 tile up. Since that is the first tile it search during minimax function. All of the tiles moving up or the tile moving down would eventually lead to capture, which is the same score. So all of the moves are equal in board evaluation. Once I move my king one tile right, then the bot would capture the pawn, since if it doesn't, the pawn will be protected. Thus all of the empty tiles above and below of the rook will have a lower score than the tile has black pawn. 
 
