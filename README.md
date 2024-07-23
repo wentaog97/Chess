@@ -41,15 +41,15 @@ The app's tile size, piece size and font size are dynamically adjusted to the di
 
 - Desktop display
 
-![Game ScreenShot Desktop App](imgs\Desktop.JPG?raw=true)
+![Game ScreenShot Desktop App](imgs/Desktop.JPG)
 
 - Tablet screen
 
-![Game ScreenShot Table App](imgs\Ipad.JPG?raw=true)
+![Game ScreenShot Table App](imgs/Ipad.JPG)
 
 - Phone screen
 
-![Game ScreenShot Phone App](imgs\iphone.JPG?raw=true)
+![Game ScreenShot Phone App](imgs/iphone.JPG)
 
 ### Board and Pieces
 The chessboard is represented with a size 64 array and pieces are represented with bits. 
@@ -86,11 +86,11 @@ Once player has no valid moves, the game will display either stalemate or checkm
 
 The following is a flowchart outlines the user interaction with the app:
 
-![User interaction Flow Chart](imgs\chessFlowChart.jpg?raw=true)
+![User interaction Flow Chart](imgs/chessFlowChart.jpg)
 
 The following illustrate the flow of how we determine which tile to highlight after clicking the piece:
 
-![Piece to highlight Flow Chart](imgs\highlightTiles.JPG?raw=true)
+![Piece to highlight Flow Chart](imgs/highlightTiles.JPG)
 
 ## Testing and Debugging
 Several bugs were caught during testing by comparing performance test result to the correct results at different depth. (I got the reference correct results here: https://www.chessprogramming.org/Perft_Results) 
@@ -152,7 +152,7 @@ The evaluation function would check for stalemate or checkmate, which stalemate 
 ### Minimax algorithm
 The main search algorithm is basically modified performance test method. The minimax function would recursively call until reached a chess node that has endgame = true, or once the depth reaches 0. It would find all legal moves of current turn's color, create all those new nodes with legal moves and recursively go deeper to check for all of the possible nodes. Once reaching the end node, it will evaluate the board and give a score and return to the higher level. Among all the child nodes scores returned, it would pick the highest score node based on the turn color. At the original call method, we will set the next move as the move that lead to the best score.
 
-![Minimax Flow Chart](imgs\Minimax.JPG)
+![Minimax Flow Chart](imgs/Minimax.JPG)
 
 ### Alpha-Beta Pruning
 Alpha-beta pruning optimizes the minimax algorithm by reducing the number of nodes evaluated in the search tree, enhancing efficiency. It introduces two variables: alpha (the best score that the maximizing player can guarantee) and beta (the best score that the minimizing player can guarantee). As the algorithm recursively explores the game tree, it updates alpha and beta values, which will used to judge if the node would be worth to dig deeper or not. If a move results in a score worse than a previously examined move (beta <= alpha), further exploration of that branch is stopped since we already know if not worth. Integrating alpha-beta pruning into the ChessBot involves modifying the minimax function to include these alpha and beta checks. This allows the ChessBot to make quicker and deeper evaluations, ensuring optimal and efficient move decisions.
@@ -163,7 +163,7 @@ Several issues with the current chess bot implementation:
 - Early game with repeated, predictable moves. This is due to all of the nodes would return a same value. So the search method would only set to the first move that yielded the same value.
 - Will wait to take a piece until have to. This is still due to the same value returned on all node. 
 
-![Bug1](imgs\bug.JPG?raw=true)
+![Bug1](imgs/bug.JPG)
 
 In here you can see that white is controlled by bot. The reasonable move would be capturing the pawn next move. However if I move the king 1 tile down, the rook would move 1 tile up. Since that is the first tile it search during minimax function. All of the tiles moving up or the tile moving down would eventually lead to capture, which is the same score. So all of the moves are equal in board evaluation. Once I move my king one tile right, then the bot would capture the pawn, since if it doesn't, the pawn will be protected. Thus all of the empty tiles above and below of the rook will have a lower score than the tile has black pawn. 
 
